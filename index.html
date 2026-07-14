@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>補課城市 VOD 導航中心</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon.jpg">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        :root { --bg-color: #1e1e2f; --card-bg: #28293d; --primary: #ff4b4b; --text: #ffffff; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); color: var(--text); margin: 0; padding: 20px; text-align: center; }
+        h1 { margin-bottom: 5px; font-size: 24px; }
+        p.subtitle { color: #a0a0b5; font-size: 14px; margin-bottom: 30px; }
+        .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; max-width: 1000px; margin: 0 auto; }
+        .card { background-color: var(--card-bg); border-radius: 15px; padding: 30px 20px; width: 200px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+        .card h2 { margin: 0 0 20px 0; font-size: 22px; }
+        .btn-enter { background-color: var(--primary); color: white; border: none; border-radius: 8px; padding: 12px 0; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; transition: 0.2s; }
+        .btn-enter:active { transform: scale(0.95); }
+        .btn-setting { background-color: transparent; color: #a0a0b5; border: 1px solid #a0a0b5; border-radius: 8px; padding: 8px 0; width: 100%; font-size: 14px; cursor: pointer; }
+        .top-btn { position: absolute; top: 20px; left: 20px; background: transparent; color: #a0a0b5; border: 1px dashed #a0a0b5; padding: 8px 15px; border-radius: 8px; cursor: pointer; }
+        /* 簡單的彈出視窗樣式 */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
+        .modal-content { background: var(--card-bg); padding: 30px; border-radius: 15px; width: 300px; }
+        .modal input, .modal select { width: 90%; padding: 10px; margin: 15px 0; border-radius: 5px; border: none; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <button class="top-btn" onclick="addSubject()">➕ 擴建課程</button>
+    <h1>🏫 補課城市 VOD 導航中心</h1>
+    <p class="subtitle">智能識別網址起點，自動生成每週上課選單（iPad 獨立版）</p>
+
+    <div class="container" id="cards-container">
+        </div>
+
+    <div id="weekModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">選擇上課週數</h3>
+            <select id="weekSelect"></select>
+            <br>
+            <button class="btn-enter" onclick="openVideo('1')" style="margin-top: 15px;">🎬 觀看第一段 (2-1)</button>
+            <button class="btn-enter" onclick="openVideo('2')" style="background-color: #ff7b00;">🎬 觀看第二段 (2-2)</button>
+            <button class="btn-setting" onclick="closeModal()" style="margin-top: 10px; color: white; border: none; background: #555;">取消返回</button>
+        </div>
+    </div>
+
+    <script>
+        // 初始化或讀取 LocalStorage 資料（iPad 的記憶大腦）
+        const defaultData = {
+            subjects: { 'math': '📐 數學課', 'chemistry': '🧪 化學課', 'physics': '🍎 物理課', 'english': '🔤 英文課' },
+            urls: { 'math': '', 'chemistry': '', 'physics': '', 'english': '' }
+        };
+        let db = JSON.parse(localStorage.getItem('vod_db')) || defaultData;
+        let currentSubject = '';
+
+        // 儲存資料到 iPad
+        function saveData() { localStorage.setItem('vod_db', JSON.stringify(db)); }
+
+        // 渲染畫面卡片
+        function renderCards() {
+            const container = document.getElementById('cards-container');
+            container.innerHTML = '';
+            for (let id in db.subjects) {
+                container.innerHTML += `
+                    <div class="card">
+                        <h2>${db.subjects[id]}</h2>
+                        <button class="btn-enter" onclick="checkAndOpen('${id}')">進入課堂</button>
+                        <button class="btn-setting" onclick="setURL('${id}')">⚙️ 設定學期網址</button>
+                    </div>`;
+            }
+        }
+
+        // 解析網址的 JS 邏輯
+        function parseUrl(fullUrl) {
+            if (!fullUrl) return null;
+            const match = fullUrl.match(/(\d{4})_2-[12]\.mp4$/i);
+            if (match) {
+                const mmdd = match[1];
+                const dateIndex = fullUrl.lastIndexOf(mmdd + "_2-");
+                const baseUrl = fullUrl.substring(0, dateIndex);
+                const year = new Date().getFullYear();
+                const month = parseInt(mmdd.substring(0, 2)) - 1; // JS 月份是 0-11
+                const day = parseInt(mmdd.substring(2, 4));
+                return { baseUrl, startDate: new Date(year, month, day), mmdd };
+            }
+            return null;
+        }
+
+        // 設定網址與刪除科目
+        function setURL(id) {
+            let url = prompt(`請輸入【${db.subjects[id]}】本學期第一堂課的網址：\n(若要刪除此課程，請輸入 delete)`);
+            if (url === 'delete') {
+                if (['math', 'chemistry', 'physics', 'english'].includes(id)) {
+                    alert("基礎課程無法拆除喔！"); return;
+                }
+                delete db.subjects[id]; delete db.urls[id];
+                saveData(); renderCards(); alert("🗑️ 課程大樓已成功拆除！");
+                return;
+            }
+            if (url) {
+                if (!parseUrl(url)) { alert("網址格式解析失敗！請確認網址尾端是否正確。"); return; }
+                db.urls[id] = url.trim();
+                saveData(); alert("✅ 網址已永久儲存在此裝置！");
+            }
+        }
+
+        // 擴建課程
+        function addSubject() {
+            let name = prompt("請輸入新課程名稱 (例如: 🌍 地理課)：");
+            if (!name) return;
+            let id = 'custom_' + Date.now();
+            db.subjects[id] = name; db.urls[id] = '';
+            saveData(); renderCards();
+        }
+
+        // 檢查並計算週數
+        function checkAndOpen(id) {
+            let fullUrl = db.urls[id];
+            if (!fullUrl) { alert("請先點擊下方按鈕【設定學期網址】！"); return; }
+
+            let info = parseUrl(fullUrl);
+            if (!info) { alert("儲存的網址解析錯誤！"); return; }
+
+            currentSubject = id;
+            let select = document.getElementById('weekSelect');
+            select.innerHTML = '';
+
+            let current = new Date(info.startDate);
+            let today = new Date();
+
+            while (current <= today) {
+                let m = String(current.getMonth() + 1).padStart(2, '0');
+                let d = String(current.getDate()).padStart(2, '0');
+                select.innerHTML += `<option value="${m}${d}">${m}月${d}日</option>`;
+                current.setDate(current.getDate() + 7);
+            }
+
+            document.getElementById('modalTitle').innerText = db.subjects[id];
+            document.getElementById('weekModal').style.display = 'flex';
+        }
+
+        // 產生連結並開啟對應的影片 (iPad 專用單次開啟)
+        function openVideo(part) {
+            let mmdd = document.getElementById('weekSelect').value;
+            let info = parseUrl(db.urls[currentSubject]);
+            let url = `${info.baseUrl}${mmdd}_2-${part}.mp4`;
+
+            // 開啟影片
+            window.open(url, '_blank');
+            // 注意：不自動關閉 modal，讓使用者滑回來後可以直接點第二段！
+        }
+
+        function closeModal() { document.getElementById('weekModal').style.display = 'none'; }
+
+        // 啟動時渲染畫面
+        renderCards();
+    </script>
+</body>
+</html>
